@@ -52,14 +52,15 @@
   }
 
   function get(action, params) {
-    return jsonp(action, params);
+    return iframePost(action, params);
   }
 
   function post(action, params, options) {
     const requestOptions = options || {};
     const jsonpUrl = buildUrl(action, params).toString();
     const forceIframe = requestOptions.transport === 'iframe';
-    const allowJsonp = requestOptions.transport !== 'iframe' && jsonpUrl.length <= JSONP_URL_LIMIT;
+    const preferJsonp = requestOptions.transport === 'jsonp';
+    const allowJsonp = preferJsonp && jsonpUrl.length <= JSONP_URL_LIMIT;
 
     if (!forceIframe && allowJsonp) {
       return jsonp(action, params);
