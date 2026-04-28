@@ -27,23 +27,26 @@
     return url.toString();
   }
 
-  async function request(method, action, params = {}) {
+  async function request(method, action, params = {}, options = {}) {
     const url = buildUrl(action, method === "GET" ? params : {});
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const timeout = setTimeout(() => controller.abort(), options.timeoutMs || REQUEST_TIMEOUT_MS);
 
     try {
-      const response = await fetch(url, {
+      const fetchOptions = {
         method,
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: method === "POST" ? JSON.stringify(params) : null,
         signal: controller.signal
-      });
+      };
 
-      clearTimeout(timeout);
+      if (method === "POST") {
+        fetchOptions.headers = {
+          "Content-Type": "application/json"
+        };
+        fetchOptions.body = JSON.stringify(params);
+      }
+
+      const response = await fetch(url, fetchOptions);
 
       if (!response.ok) {
         throw new Error("HTTP error: " + response.status);
@@ -52,22 +55,30 @@
       const data = await response.json();
 
       if (!data.success) {
-        throw new Error(data.error?.message || "Request failed");
+        const errorMessage =
+          data.error && typeof data.error === "object" ? data.error.message : data.error;
+        throw new Error(errorMessage || "Request failed");
       }
 
       return data.data;
 
     } catch (err) {
+      if (err.name === "AbortError") {
+        throw new Error("Request timed out. Please try again.");
+      }
+
       throw new Error(err.message || "Network error");
+    } finally {
+      clearTimeout(timeout);
     }
   }
 
-  function get(action, params) {
-    return request("GET", action, params);
+  function get(action, params, options) {
+    return request("GET", action, params, options);
   }
 
-  function post(action, params) {
-    return request("POST", action, params);
+  function post(action, params, options) {
+    return request("POST", action, params, options);
   }
 
   global.ApiClient = Object.freeze({
