@@ -28,7 +28,10 @@
     const url = new URL(getConfig().appsScriptWebAppUrl);
     url.searchParams.set('api', '1');
     url.searchParams.set('action', action);
-
+    
+    if (callbackName) {
+    url.searchParams.set('callback', callbackName);
+  }
     Object.entries(params || {}).forEach(function(entry) {
       const key = entry[0];
       const value = entry[1];
@@ -72,7 +75,7 @@
   function jsonp(action, params) {
     return new Promise(function(resolve, reject) {
       const callbackName = '__qrEntryLoggerJsonp_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
-      const url = buildUrl(action, params);
+      const url = buildUrl(action, params, callbackName);
       const script = document.createElement('script');
       const timeout = window.setTimeout(function() {
         cleanup();
