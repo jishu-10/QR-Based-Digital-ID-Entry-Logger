@@ -374,241 +374,189 @@
       </section>
     </div>
 
-    <script>
-      let html5QrCode = null;
-      let isScanning = false;
-      let isStarting = false;
-      let isProcessing = false;
-      let lastClientScanText = '';
-      let lastClientScanAt = 0;
-      let lastCameraLabel = '';
+<!-- ONLY SHOWING CHANGED JS PART — KEEP YOUR HTML/CSS SAME -->
 
-      const CLIENT_SCAN_COOLDOWN_MS = 1800;
-      const clockTime = document.getElementById('clockTime');
-      const statusBanner = document.getElementById('statusBanner');
-      const startButton = document.getElementById('startButton');
-      const stopButton = document.getElementById('stopButton');
-      const cameraSelect = document.getElementById('cameraSelect');
-      const projectStatus = document.getElementById('projectStatus');
-      const lastScanResult = document.getElementById('lastScanResult');
-      const lastUserName = document.getElementById('lastUserName');
-      const lastTimestamp = document.getElementById('lastTimestamp');
+<script>
+  let html5QrCode = null;
+  let isScanning = false;
+  let isStarting = false;
+  let isProcessing = false;
+  let lastClientScanText = '';
+  let lastClientScanAt = 0;
+  let lastCameraLabel = '';
 
-      document.addEventListener('DOMContentLoaded', function() {
-        html5QrCode = new Html5Qrcode('reader');
-        bindEvents();
-        tickClock();
-        setInterval(tickClock, 1000);
-        loadProjectStatus();
-      });
+  const CLIENT_SCAN_COOLDOWN_MS = 1800;
 
-      function bindEvents() {
-        startButton.addEventListener('click', startScanner);
-        stopButton.addEventListener('click', stopScanner);
-        cameraSelect.addEventListener('change', function() {
-          lastCameraLabel = cameraSelect.options[cameraSelect.selectedIndex]
-            ? cameraSelect.options[cameraSelect.selectedIndex].text
-            : '';
-        });
+  // 🔥 IMPORTANT: PUT YOUR WEB APP URL HERE
+  const API_URL = "https://script.google.com/macros/s/XXXXX/exec";
+
+  const clockTime = document.getElementById('clockTime');
+  const statusBanner = document.getElementById('statusBanner');
+  const startButton = document.getElementById('startButton');
+  const stopButton = document.getElementById('stopButton');
+  const cameraSelect = document.getElementById('cameraSelect');
+  const projectStatus = document.getElementById('projectStatus');
+  const lastScanResult = document.getElementById('lastScanResult');
+  const lastUserName = document.getElementById('lastUserName');
+  const lastTimestamp = document.getElementById('lastTimestamp');
+
+  document.addEventListener('DOMContentLoaded', function() {
+    html5QrCode = new Html5Qrcode('reader');
+    bindEvents();
+    tickClock();
+    setInterval(tickClock, 1000);
+
+    // ❌ Removed loadProjectStatus (Apps Script only)
+    projectStatus.textContent = "Scanner ready (external mode)";
+  });
+
+  function bindEvents() {
+    startButton.addEventListener('click', startScanner);
+    stopButton.addEventListener('click', stopScanner);
+    cameraSelect.addEventListener('change', function() {
+      lastCameraLabel = cameraSelect.options[cameraSelect.selectedIndex]
+        ? cameraSelect.options[cameraSelect.selectedIndex].text
+        : '';
+    });
+  }
+
+  function tickClock() {
+    clockTime.textContent = new Intl.DateTimeFormat([], {
+      dateStyle: 'medium',
+      timeStyle: 'medium',
+    }).format(new Date());
+  }
+
+  async function startScanner() {
+    if (isStarting || isScanning) return;
+
+    isStarting = true;
+    startButton.disabled = true;
+    setBanner('Requesting camera access...', 'info');
+
+    try {
+      const cameras = await Html5Qrcode.getCameras();
+
+      if (!cameras || cameras.length === 0) {
+        throw new Error('No camera was detected on this device.');
       }
 
-      function tickClock() {
-        clockTime.textContent = new Intl.DateTimeFormat([], {
-          dateStyle: 'medium',
-          timeStyle: 'medium',
-        }).format(new Date());
-      }
+      cameraSelect.innerHTML = cameras
+        .map((camera, index) => {
+          const selected = index === 0 ? ' selected' : '';
+          return `<option value="${camera.id}"${selected}>${escapeHtml(camera.label || ('Camera ' + (index + 1)))}</option>`;
+        })
+        .join('');
 
-      function loadProjectStatus() {
-        google.script.run
-          .withSuccessHandler(function(status) {
-            if (!status.ready) {
-              projectStatus.textContent = 'Setup pending. Open the admin view and run Bootstrap Project.';
-              setBanner('Project setup is incomplete. Use the admin view first.', 'warning');
-              return;
-            }
+      cameraSelect.disabled = false;
+      const selectedCameraId = cameraSelect.value || cameras[0].id;
+      lastCameraLabel = cameraSelect.options[cameraSelect.selectedIndex].text;
 
-            projectStatus.textContent =
-              'Ready. Duplicate window: ' + status.duplicateWindowSeconds + ' seconds. Time zone: ' + status.timeZone + '.';
-            setBanner('Project is ready. Start the scanner when you are near a QR code.', 'info');
-          })
-          .withFailureHandler(function(error) {
-            projectStatus.textContent = 'Unable to read project status.';
-            setBanner(error.message || 'Unable to load project status.', 'warning');
-          })
-          .getProjectStatus();
-      }
+      await html5QrCode.start(
+        selectedCameraId,
+        {
+          fps: 10,
+          qrbox: (w, h) => {
+            const edge = Math.floor(Math.min(w, h) * 0.72);
+            return { width: edge, height: edge };
+          },
+        },
+        onScanSuccess
+      );
 
-      async function startScanner() {
-        if (isStarting || isScanning) {
-          return;
-        }
+      isScanning = true;
+      stopButton.disabled = false;
+      setBanner('Scanner is live. Hold QR steady.', 'success');
 
-        isStarting = true;
-        startButton.disabled = true;
-        setBanner('Requesting camera access...', 'info');
+    } catch (error) {
+      setBanner(error.message, 'warning');
+      startButton.disabled = false;
+    } finally {
+      isStarting = false;
+    }
+  }
 
-        try {
-          const cameras = await Html5Qrcode.getCameras();
+  async function stopScanner() {
+    if (!html5QrCode || !isScanning) return;
 
-          if (!cameras || cameras.length === 0) {
-            throw new Error('No camera was detected on this device.');
-          }
+    await html5QrCode.stop();
+    await html5QrCode.clear();
 
-          cameraSelect.innerHTML = cameras
-            .map(function(camera, index) {
-              const selected = index === 0 ? ' selected' : '';
-              return '<option value="' + camera.id + '"' + selected + '>' + escapeHtml(camera.label || ('Camera ' + (index + 1))) + '</option>';
-            })
-            .join('');
+    html5QrCode = new Html5Qrcode('reader');
+    isScanning = false;
+    isProcessing = false;
+    startButton.disabled = false;
+    stopButton.disabled = true;
+    setBanner('Scanner stopped.', 'neutral');
+  }
 
-          cameraSelect.disabled = false;
-          const selectedCameraId = cameraSelect.value || cameras[0].id;
-          lastCameraLabel = cameraSelect.options[cameraSelect.selectedIndex].text;
+  function onScanSuccess(decodedText) {
+    const now = Date.now();
 
-          await html5QrCode.start(
-            selectedCameraId,
-            {
-              fps: 10,
-              qrbox: function(viewfinderWidth, viewfinderHeight) {
-                const edge = Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.72);
-                return { width: edge, height: edge };
-              },
-              aspectRatio: 1,
-            },
-            onScanSuccess,
-            function() {}
-          );
+    if (isProcessing) return;
 
-          isScanning = true;
-          stopButton.disabled = false;
-          setBanner('Scanner is live. Hold the QR steady inside the frame.', 'success');
-        } catch (error) {
-          setBanner(resolveCameraMessage(error), 'warning');
-          startButton.disabled = false;
-          cameraSelect.disabled = true;
-          cameraSelect.innerHTML = '<option value="">Camera unavailable</option>';
-        } finally {
-          isStarting = false;
-          if (!isScanning) {
-            startButton.disabled = false;
-          }
-        }
-      }
+    if (decodedText === lastClientScanText && now - lastClientScanAt < CLIENT_SCAN_COOLDOWN_MS) return;
 
-      async function stopScanner() {
-        if (!html5QrCode || !isScanning) {
-          return;
-        }
+    isProcessing = true;
+    lastClientScanText = decodedText;
+    lastClientScanAt = now;
 
-        try {
-          await html5QrCode.stop();
-          await html5QrCode.clear();
-        } catch (error) {
-          // Ignore stop errors so the UI still recovers.
-        }
+    setBanner('Validating QR...', 'info');
 
-        html5QrCode = new Html5Qrcode('reader');
-        isScanning = false;
-        isProcessing = false;
-        startButton.disabled = false;
-        stopButton.disabled = true;
-        cameraSelect.disabled = true;
-        setBanner('Scanner stopped.', 'neutral');
-      }
+    // ✅ FETCH INSTEAD OF google.script.run
+    fetch(API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        raw_qr: decodedText,
+        cameraLabel: lastCameraLabel,
+        userAgent: navigator.userAgent
+      })
+    })
+    .then(res => res.json())
+    .then(response => {
+      isProcessing = false;
+      renderScanResponse(response);
+    })
+    .catch(err => {
+      isProcessing = false;
+      setBanner("Backend error", "warning");
+      console.error(err);
+    });
+  }
 
-      function onScanSuccess(decodedText) {
-        const now = Date.now();
+  function renderScanResponse(response) {
+    if (!response || !response.ok) {
+      setBanner(response?.message || 'Scan rejected', 'warning');
+      lastScanResult.textContent = response?.code || 'ERROR';
+      return;
+    }
 
-        if (isProcessing) {
-          return;
-        }
+    const statusMarkup =
+      `<span class="scan-pill ${response.status === 'IN' ? 'pill-in' : 'pill-out'}">
+        ${response.status}
+      </span>`;
 
-        if (decodedText === lastClientScanText && now - lastClientScanAt < CLIENT_SCAN_COOLDOWN_MS) {
-          return;
-        }
+    setBanner(response.message, 'success');
+    lastScanResult.innerHTML = statusMarkup;
+    lastUserName.textContent = `${response.name} (${response.userId})`;
+    lastTimestamp.textContent = new Date(response.timestampIso).toLocaleString();
+  }
 
-        isProcessing = true;
-        lastClientScanText = decodedText;
-        lastClientScanAt = now;
-        setBanner('QR detected. Validating against Google Sheets...', 'info');
+  function setBanner(message, tone) {
+    statusBanner.className = 'status-banner';
+    statusBanner.classList.add(`tone-${tone}`);
+    statusBanner.textContent = message;
+  }
 
-        google.script.run
-          .withSuccessHandler(function(response) {
-            isProcessing = false;
-            renderScanResponse(response);
-          })
-          .withFailureHandler(function(error) {
-            isProcessing = false;
-            setBanner(error.message || 'Unable to reach the backend.', 'warning');
-            lastScanResult.textContent = 'Server communication failed.';
-          })
-          .processScan(decodedText, {
-            cameraLabel: lastCameraLabel,
-            userAgent: navigator.userAgent,
-          });
-      }
-
-      function renderScanResponse(response) {
-        if (!response || !response.ok) {
-          const message = response && response.message ? response.message : 'Scan rejected.';
-          setBanner(message, 'warning');
-          lastScanResult.textContent = response && response.code ? response.code : 'SCAN_REJECTED';
-          lastUserName.textContent = 'No valid user logged.';
-          lastTimestamp.textContent = new Date().toLocaleString();
-          return;
-        }
-
-        const statusMarkup =
-          '<span class="scan-pill ' + (response.status === 'IN' ? 'pill-in' : 'pill-out') + '">' +
-          response.status +
-          '</span>';
-
-        setBanner(response.message, 'success');
-        lastScanResult.innerHTML = statusMarkup + ' ' + escapeHtml(response.code);
-        lastUserName.textContent = response.name + ' (' + response.userId + ')';
-        lastTimestamp.textContent = new Date(response.timestampIso).toLocaleString();
-      }
-
-      function setBanner(message, tone) {
-        statusBanner.className = 'status-banner';
-        const toneClass = {
-          neutral: 'tone-neutral',
-          info: 'tone-info',
-          success: 'tone-success',
-          warning: 'tone-warning',
-        }[tone] || 'tone-neutral';
-
-        statusBanner.classList.add(toneClass);
-        statusBanner.textContent = message;
-      }
-
-      function resolveCameraMessage(error) {
-        const raw = (error && error.message ? error.message : String(error || '')).toLowerCase();
-
-        if (raw.includes('permission')) {
-          return 'Camera access was blocked. Allow camera permission and try again.';
-        }
-
-        if (raw.includes('notfound') || raw.includes('no camera')) {
-          return 'No usable camera was found on this device.';
-        }
-
-        if (raw.includes('secure')) {
-          return 'The browser requires a secure context for camera access.';
-        }
-
-        return error && error.message ? error.message : 'Unable to start the camera scanner.';
-      }
-
-      function escapeHtml(value) {
-        return String(value)
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          .replace(/"/g, '&quot;')
-          .replace(/'/g, '&#39;');
-      }
-    </script>
+  function escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+</script>
   </body>
 </html>
