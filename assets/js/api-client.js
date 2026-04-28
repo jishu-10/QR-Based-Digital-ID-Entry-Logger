@@ -13,33 +13,25 @@
   }
 
   function normalizeValue(value) {
-    if (value === null || value === undefined) {
-      return '';
-    }
-
-    if (typeof value === 'object') {
-      return JSON.stringify(value);
-    }
-
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'object') return JSON.stringify(value);
     return String(value);
   }
 
-  function buildUrl(action, params) {
+  // ✅ FIXED: callbackName added properly
+  function buildUrl(action, params, callbackName) {
     const url = new URL(getConfig().appsScriptWebAppUrl);
+
     url.searchParams.set('api', '1');
     url.searchParams.set('action', action);
-    
+
+    // 🔥 IMPORTANT: only use callback (NOT prefix)
     if (callbackName) {
-    url.searchParams.set('callback', callbackName);
-  }
-    Object.entries(params || {}).forEach(function(entry) {
-      const key = entry[0];
-      const value = entry[1];
+      url.searchParams.set('callback', callbackName);
+    }
 
-      if (value === null || value === undefined || value === '') {
-        return;
-      }
-
+    Object.entries(params || {}).forEach(function([key, value]) {
+      if (value === null || value === undefined || value === '') return;
       url.searchParams.set(key, normalizeValue(value));
     });
 
@@ -48,9 +40,9 @@
 
   function buildApiError(payload) {
     const error = new Error(
-      payload && payload.error && payload.error.message ? payload.error.message : 'Request failed.'
+      payload?.error?.message || 'Request failed.'
     );
-    error.code = payload && payload.error && payload.error.code ? payload.error.code : 'REQUEST_FAILED';
+    error.code = payload?.error?.code || 'REQUEST_FAILED';
     return error;
   }
 
@@ -61,6 +53,7 @@
   function post(action, params, options) {
     const requestOptions = options || {};
     const jsonpUrl = buildUrl(action, params).toString();
+
     const forceIframe = requestOptions.transport === 'iframe';
     const preferJsonp = requestOptions.transport === 'jsonp';
     const allowJsonp = (preferJsonp || !forceIframe) && jsonpUrl.length <= JSONP_URL_LIMIT;
@@ -72,28 +65,24 @@
     return iframePost(action, params);
   }
 
+  // ✅ FULLY FIXED JSONP
   function jsonp(action, params) {
     return new Promise(function(resolve, reject) {
-      const callbackName = '__qrEntryLoggerJsonp_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+      const callbackName =
+        '__qrEntryLoggerJsonp_' +
+        Date.now() +
+        '_' +
+        Math.floor(Math.random() * 100000);
+
       const url = buildUrl(action, params, callbackName);
       const script = document.createElement('script');
+
       const timeout = window.setTimeout(function() {
         cleanup();
-        reject(
-          new Error(
-            'The backend request timed out. If you just changed the Apps Script code, redeploy the web app and try again.'
-          )
-        );
+        reject(new Error('The backend request timed out.'));
       }, REQUEST_TIMEOUT_MS);
 
-      function cleanup() {
-        window.clearTimeout(timeout);
-        if (script.parentNode) {
-          script.parentNode.removeChild(script);
-        }
-        delete window[callbackName];
-      }
-
+      // ✅ REGISTER CALLBACK CORRECTLY
       window[callbackName] = function(payload) {
         cleanup();
 
@@ -105,36 +94,42 @@
         resolve(payload.data);
       };
 
+      function cleanup() {
+        window.clearTimeout(timeout);
+        if (script.parentNode) script.parentNode.removeChild(script);
+        delete window[callbackName];
+      }
+
       script.async = true;
-      script.src = url.toString() + '&prefix=' + encodeURIComponent(callbackName);
+      script.src = url.toString(); // 🔥 CLEAN URL (NO prefix)
       script.onerror = function() {
         cleanup();
-        reject(
-          new Error(
-            'Unable to reach the Apps Script backend. Redeploy the Apps Script web app and confirm access is set to Anyone.'
-          )
-        );
+        reject(new Error('Unable to reach the Apps Script backend.'));
       };
+
       document.head.appendChild(script);
     });
   }
 
   function iframePost(action, params) {
     return new Promise(function(resolve, reject) {
-      const requestId = '__qrEntryLoggerPost_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+      const requestId =
+        '__qrEntryLoggerPost_' +
+        Date.now() +
+        '_' +
+        Math.floor(Math.random() * 100000);
+
       const iframe = document.createElement('iframe');
       const form = document.createElement('form');
+
       const timeout = window.setTimeout(function() {
         cleanup();
-        reject(
-          new Error(
-            'The backend request timed out. If you just changed the Apps Script code, redeploy the web app and try again.'
-          )
-        );
+        reject(new Error('The backend request timed out.'));
       }, REQUEST_TIMEOUT_MS);
 
       iframe.name = requestId;
       iframe.style.display = 'none';
+
       form.method = 'POST';
       form.action = getConfig().appsScriptWebAppUrl;
       form.target = requestId;
@@ -145,23 +140,15 @@
       appendHiddenField(form, 'transport', 'iframe');
       appendHiddenField(form, 'requestId', requestId);
 
-      Object.entries(params || {}).forEach(function(entry) {
-        const key = entry[0];
-        const value = entry[1];
-
-        if (value === null || value === undefined || value === '') {
-          return;
-        }
-
+      Object.entries(params || {}).forEach(function([key, value]) {
+        if (value === null || value === undefined || value === '') return;
         appendHiddenField(form, key, normalizeValue(value));
       });
 
       function onMessage(event) {
         const data = event.data;
 
-        if (!data || data.source !== 'qr-entry-logger' || data.requestId !== requestId) {
-          return;
-        }
+        if (!data || data.source !== 'qr-entry-logger' || data.requestId !== requestId) return;
 
         cleanup();
 
@@ -177,16 +164,12 @@
         window.clearTimeout(timeout);
         window.removeEventListener('message', onMessage);
 
-        if (form.parentNode) {
-          form.parentNode.removeChild(form);
-        }
-
-        if (iframe.parentNode) {
-          iframe.parentNode.removeChild(iframe);
-        }
+        if (form.parentNode) form.parentNode.removeChild(form);
+        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
       }
 
       window.addEventListener('message', onMessage);
+
       document.body.appendChild(iframe);
       document.body.appendChild(form);
       form.submit();
@@ -202,8 +185,8 @@
   }
 
   global.ApiClient = Object.freeze({
-    buildUrl: buildUrl,
-    get: get,
-    post: post,
+    buildUrl,
+    get,
+    post,
   });
 })(window);
