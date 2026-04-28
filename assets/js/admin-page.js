@@ -48,15 +48,9 @@
     setStatus('Creating project resources...');
 
     try {
-      await window.ApiClient.post(
-        'bootstrap_project',
-        {
-          adminKey: getAdminKey(),
-        },
-        {
-          allowJsonpFallback: true,
-        }
-      );
+      await window.ApiClient.post('bootstrap_project', {
+        adminKey: getAdminKey(),
+      });
       setStatus('Project resources are ready.');
       await refreshAll();
     } catch (error) {
@@ -148,7 +142,7 @@
           adminKey: getAdminKey(),
         },
         {
-          allowJsonpFallback: true,
+          transport: 'iframe',
         }
       );
       renderResults(result);
@@ -228,9 +222,6 @@
         {
           limit: 12,
           adminKey: getAdminKey(),
-        },
-        {
-          allowJsonpFallback: true,
         }
       );
       renderRecentUsers(users);
