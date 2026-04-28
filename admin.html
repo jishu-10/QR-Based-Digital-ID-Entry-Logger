@@ -119,7 +119,8 @@
       }
 
       button,
-      input {
+      input,
+      select {
         font: inherit;
       }
 
@@ -149,6 +150,11 @@
       .secondary-btn {
         background: #ece3d9;
         color: var(--ink);
+      }
+
+      .danger-btn {
+        background: #f0d8ce;
+        color: #8f321d;
       }
 
       .stats {
@@ -192,7 +198,10 @@
       }
 
       textarea,
-      input[type="password"] {
+      input[type="password"],
+      input[type="text"],
+      input[type="number"],
+      select {
         width: 100%;
         border-radius: 18px;
         border: 1px solid var(--line);
@@ -208,6 +217,12 @@
 
       .field-block {
         margin-bottom: 16px;
+      }
+
+      .field-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
       }
 
       .field-label {
@@ -269,6 +284,47 @@
         color: var(--muted);
       }
 
+      .toggle-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 14px;
+        color: var(--ink);
+      }
+
+      .toggle-row input {
+        width: auto;
+      }
+
+      .table-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .table-actions button {
+        padding: 8px 11px;
+        font-size: 0.82rem;
+      }
+
+      .status-pill {
+        display: inline-block;
+        padding: 6px 10px;
+        border-radius: 999px;
+        font-size: 0.76rem;
+        font-weight: 700;
+      }
+
+      .pill-active {
+        background: var(--accent-soft);
+        color: var(--accent);
+      }
+
+      .pill-inactive {
+        background: var(--warm-soft);
+        color: var(--warm);
+      }
+
       @media (max-width: 980px) {
         .grid {
           grid-template-columns: 1fr;
@@ -288,6 +344,10 @@
         .stats {
           grid-template-columns: 1fr;
         }
+
+        .field-grid {
+          grid-template-columns: 1fr;
+        }
       }
     </style>
   </head>
@@ -301,9 +361,24 @@
         <a class="hero-link" href="index.html">Open Scanner View</a>
       </section>
 
-      <div class="status-bar" id="statusBar">
-        Loading project status...
-      </div>
+      <section class="panel" id="adminGate">
+        <h2>Admin Access</h2>
+        <p class="hint">Enter the Apps Script <code class="inline-code">ADMIN_ACCESS_KEY</code> to open setup, dashboard, reports, and moderation.</p>
+        <div class="field-block">
+          <label class="field-label" for="gateAdminKeyInput">Admin Access Key</label>
+          <input id="gateAdminKeyInput" type="password" autocomplete="current-password" placeholder="Required">
+        </div>
+        <div class="status-bar" id="gateStatus">Admin actions are locked until a valid key is entered.</div>
+        <div class="button-row">
+          <button class="primary-btn" id="unlockAdminButton">Unlock Admin</button>
+          <a class="hero-link" href="index.html">Back to Scanner</a>
+        </div>
+      </section>
+
+      <main id="adminContent" hidden>
+        <div class="status-bar" id="statusBar">
+          Loading project status...
+        </div>
 
       <section class="grid">
         <div class="panel">
@@ -337,6 +412,30 @@
               <div class="stat-value" id="statWeek">0</div>
             </div>
           </div>
+
+          <h2 style="margin-top: 24px;">GeoLocation Validation</h2>
+          <p class="hint">When enabled, scans must come from the configured location radius.</p>
+          <label class="toggle-row" for="geoEnabledInput">
+            <input id="geoEnabledInput" type="checkbox">
+            Require scanner location
+          </label>
+          <div class="field-grid">
+            <div class="field-block">
+              <label class="field-label" for="geoLatitudeInput">Latitude</label>
+              <input id="geoLatitudeInput" type="number" step="any" placeholder="0.000000">
+            </div>
+            <div class="field-block">
+              <label class="field-label" for="geoLongitudeInput">Longitude</label>
+              <input id="geoLongitudeInput" type="number" step="any" placeholder="0.000000">
+            </div>
+            <div class="field-block">
+              <label class="field-label" for="geoRadiusInput">Radius Meters</label>
+              <input id="geoRadiusInput" type="number" min="1" step="1" placeholder="100">
+            </div>
+          </div>
+          <div class="button-row">
+            <button class="secondary-btn" id="saveGeoButton">Save Geo Rules</button>
+          </div>
         </div>
 
         <div class="panel">
@@ -345,8 +444,8 @@
 
           <div class="field-block">
             <label class="field-label" for="adminKeyInput">Admin Access Key</label>
-            <input id="adminKeyInput" type="password" placeholder="Enter only if ADMIN_ACCESS_KEY is configured in Apps Script">
-            <p class="hint" id="adminKeyHint">Optional unless you choose to protect admin actions.</p>
+            <input id="adminKeyInput" type="password" placeholder="Required ADMIN_ACCESS_KEY">
+            <p class="hint" id="adminKeyHint">Required for all admin actions.</p>
           </div>
 
           <div class="field-block">
@@ -361,6 +460,7 @@ Bob Shah,bob@example.com</textarea>
           <div class="button-row" style="margin-top: 14px;">
             <button class="primary-btn" id="generateButton">Generate QR IDs</button>
             <button class="secondary-btn" id="loadUsersButton">Load Recent Users</button>
+            <button class="secondary-btn" id="lockAdminButton">Lock Admin</button>
           </div>
         </div>
       </section>
@@ -373,9 +473,19 @@ Bob Shah,bob@example.com</textarea>
 
       <section class="panel" style="margin-top: 18px;">
         <h2>Recent Users</h2>
-        <p class="hint">A quick view of the newest user records currently stored in the <code class="inline-code">Users</code> sheet.</p>
+        <p class="hint">Newest user records currently stored in the <code class="inline-code">Users</code> sheet, with basic moderation controls.</p>
         <div id="usersContainer" class="empty-state">No users loaded yet.</div>
       </section>
+
+      <section class="panel" style="margin-top: 18px;">
+        <h2>Daily / Weekly Reports</h2>
+        <p class="hint">Per-user attendance totals generated from the clean entry log.</p>
+        <div class="button-row">
+          <button class="secondary-btn" id="loadReportsButton">Refresh Reports</button>
+        </div>
+        <div id="reportsContainer" class="empty-state">No reports loaded yet.</div>
+      </section>
+      </main>
     </div>
 
     <script src="assets/js/runtime-config.js"></script>
