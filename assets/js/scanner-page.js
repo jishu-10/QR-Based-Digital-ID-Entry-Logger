@@ -3,6 +3,7 @@
   let isScanning = false;
   let isStarting = false;
   let isProcessing = false;
+  let activeCameraId = '';
   let lastClientScanText = '';
   let lastClientScanAt = 0;
   let lastCameraLabel = '';
@@ -27,12 +28,18 @@
   });
 
   function bindEvents() {
-    startButton.addEventListener('click', startScanner);
+    startButton.addEventListener('click', function() {
+      startScanner();
+    });
+
     stopButton.addEventListener('click', stopScanner);
+
     cameraSelect.addEventListener('change', function() {
-      lastCameraLabel = cameraSelect.options[cameraSelect.selectedIndex]
-        ? cameraSelect.options[cameraSelect.selectedIndex].text
-        : '';
+      lastCameraLabel = getSelectedCameraLabel_();
+
+      if (isScanning && cameraSelect.value && cameraSelect.value !== activeCameraId) {
+        switchCamera(cameraSelect.value);
+      }
     });
   }
 
@@ -62,68 +69,91 @@
     }
   }
 
-  async function startScanner() {
+  async function startScanner(preferredCameraId) {
     if (isStarting || isScanning) {
       return;
     }
 
     isStarting = true;
     startButton.disabled = true;
+    cameraSelect.disabled = true;
     setBanner('Requesting camera access...', 'info');
 
     try {
-      const cameras = await Html5Qrcode.getCameras();
+      const cameras = await loadCameraOptions_(preferredCameraId);
+      const selectedCameraId = resolveCameraId_(cameras, preferredCameraId);
 
-      if (!cameras || cameras.length === 0) {
+      if (!selectedCameraId) {
         throw new Error('No camera was detected on this device.');
       }
 
-      cameraSelect.innerHTML = cameras
-        .map(function(camera, index) {
-          const selected = index === 0 ? ' selected' : '';
-          return (
-            '<option value="' +
-            camera.id +
-            '"' +
-            selected +
-            '>' +
-            escapeHtml(camera.label || 'Camera ' + (index + 1)) +
-            '</option>'
-          );
-        })
-        .join('');
-
-      cameraSelect.disabled = false;
-      const selectedCameraId = cameraSelect.value || cameras[0].id;
-      lastCameraLabel = cameraSelect.options[cameraSelect.selectedIndex].text;
-
-      await html5QrCode.start(
-        selectedCameraId,
-        {
-          fps: 10,
-          qrbox: function(viewfinderWidth, viewfinderHeight) {
-            const edge = Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.72);
-            return { width: edge, height: edge };
-          },
-          aspectRatio: 1,
-        },
-        onScanSuccess,
-        function() {}
-      );
+      cameraSelect.value = selectedCameraId;
+      lastCameraLabel = getSelectedCameraLabel_();
+      await startScannerSession_(selectedCameraId);
 
       isScanning = true;
       stopButton.disabled = false;
+      cameraSelect.disabled = false;
       setBanner('Scanner is live. Hold the QR steady inside the frame.', 'success');
     } catch (error) {
       setBanner(resolveCameraMessage(error), 'warning');
       startButton.disabled = false;
+      stopButton.disabled = true;
       cameraSelect.disabled = true;
-      cameraSelect.innerHTML = '<option value="">Camera unavailable</option>';
+      if (!cameraSelect.options.length) {
+        cameraSelect.innerHTML = '<option value="">Camera unavailable</option>';
+      }
     } finally {
       isStarting = false;
-      if (!isScanning) {
-        startButton.disabled = false;
+    }
+  }
+
+  async function switchCamera(cameraId) {
+    if (!cameraId || !isScanning || isStarting || cameraId === activeCameraId) {
+      return;
+    }
+
+    isStarting = true;
+    stopButton.disabled = true;
+    cameraSelect.disabled = true;
+    setBanner('Switching camera source...', 'info');
+
+    const previousCameraId = activeCameraId;
+
+    try {
+      await stopScannerSession_();
+      isScanning = false;
+      await startScannerSession_(cameraId);
+      isScanning = true;
+      lastCameraLabel = getSelectedCameraLabel_();
+      setBanner('Camera source updated successfully.', 'success');
+    } catch (error) {
+      isScanning = false;
+
+      if (previousCameraId) {
+        try {
+          cameraSelect.value = previousCameraId;
+          await startScannerSession_(previousCameraId);
+          isScanning = true;
+          lastCameraLabel = getSelectedCameraLabel_();
+          setBanner('Could not switch cameras. The previous camera source was restored.', 'warning');
+        } catch (restoreError) {
+          activeCameraId = '';
+          cameraSelect.value = '';
+          lastCameraLabel = '';
+          setBanner(resolveCameraMessage(error), 'warning');
+        }
+      } else {
+        activeCameraId = '';
+        cameraSelect.value = '';
+        lastCameraLabel = '';
+        setBanner(resolveCameraMessage(error), 'warning');
       }
+    } finally {
+      isStarting = false;
+      startButton.disabled = isScanning;
+      stopButton.disabled = !isScanning;
+      cameraSelect.disabled = !isScanning;
     }
   }
 
@@ -132,16 +162,10 @@
       return;
     }
 
-    try {
-      await html5QrCode.stop();
-      await html5QrCode.clear();
-    } catch (error) {
-      // Ignore stop errors so the UI still recovers.
-    }
-
-    html5QrCode = new Html5Qrcode('reader');
+    await stopScannerSession_();
     isScanning = false;
     isProcessing = false;
+    activeCameraId = '';
     startButton.disabled = false;
     stopButton.disabled = true;
     cameraSelect.disabled = true;
@@ -165,19 +189,13 @@
     setBanner('QR detected. Validating against Google Sheets...', 'info');
 
     try {
-      const response = await window.ApiClient.post(
-        'process_scan',
-        {
-          rawQrText: decodedText,
-          scannerContext: {
-            cameraLabel: lastCameraLabel,
-            userAgent: navigator.userAgent,
-          },
+      const response = await window.ApiClient.post('process_scan', {
+        rawQrText: decodedText,
+        scannerContext: {
+          cameraLabel: lastCameraLabel,
+          userAgent: navigator.userAgent,
         },
-        {
-          allowJsonpFallback: true,
-        }
-      );
+      });
       renderScanResponse(response);
     } catch (error) {
       setBanner(error.message || 'Unable to reach the backend.', 'warning');
@@ -204,6 +222,87 @@
     lastScanResult.innerHTML = statusMarkup + ' ' + escapeHtml(response.code);
     lastUserName.textContent = response.name + ' (' + response.userId + ')';
     lastTimestamp.textContent = new Date(response.timestampIso).toLocaleString();
+  }
+
+  async function loadCameraOptions_(preferredCameraId) {
+    const cameras = await Html5Qrcode.getCameras();
+
+    if (!cameras || cameras.length === 0) {
+      throw new Error('No camera was detected on this device.');
+    }
+
+    cameraSelect.innerHTML = cameras
+      .map(function(camera) {
+        return '<option value="' + escapeHtml(camera.id) + '">' + escapeHtml(camera.label || 'Unnamed camera') + '</option>';
+      })
+      .join('');
+
+    cameraSelect.disabled = false;
+    cameraSelect.value = resolveCameraId_(cameras, preferredCameraId);
+
+    return cameras;
+  }
+
+  function resolveCameraId_(cameras, preferredCameraId) {
+    if (preferredCameraId) {
+      const matchingCamera = cameras.find(function(camera) {
+        return camera.id === preferredCameraId;
+      });
+
+      if (matchingCamera) {
+        return matchingCamera.id;
+      }
+    }
+
+    return cameras[0] ? cameras[0].id : '';
+  }
+
+  async function startScannerSession_(cameraId) {
+    if (!html5QrCode) {
+      html5QrCode = new Html5Qrcode('reader');
+    }
+
+    await html5QrCode.start(
+      cameraId,
+      {
+        fps: 10,
+        qrbox: function(viewfinderWidth, viewfinderHeight) {
+          const edge = Math.floor(Math.min(viewfinderWidth, viewfinderHeight) * 0.72);
+          return { width: edge, height: edge };
+        },
+        aspectRatio: 1,
+      },
+      onScanSuccess,
+      function() {}
+    );
+
+    activeCameraId = cameraId;
+  }
+
+  async function stopScannerSession_() {
+    if (!html5QrCode) {
+      return;
+    }
+
+    try {
+      await html5QrCode.stop();
+    } catch (error) {
+      // Ignore stop errors so the UI still recovers.
+    }
+
+    try {
+      await html5QrCode.clear();
+    } catch (error) {
+      // Ignore clear errors so the UI still recovers.
+    }
+
+    html5QrCode = new Html5Qrcode('reader');
+  }
+
+  function getSelectedCameraLabel_() {
+    return cameraSelect.options[cameraSelect.selectedIndex]
+      ? cameraSelect.options[cameraSelect.selectedIndex].text
+      : '';
   }
 
   function setBanner(message, tone) {
