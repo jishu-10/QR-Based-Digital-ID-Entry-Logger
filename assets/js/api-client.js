@@ -91,10 +91,10 @@
         if (script.parentNode) {
           script.parentNode.removeChild(script);
         }
-        delete global[callbackName];
+        delete window[callbackName];
       }
 
-      global[callbackName] = function(payload) {
+      window[callbackName] = function(payload) {
         cleanup();
 
         if (!payload || payload.success !== true) {
