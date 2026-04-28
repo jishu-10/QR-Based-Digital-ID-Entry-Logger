@@ -7,8 +7,12 @@
   let lastClientScanText = '';
   let lastClientScanAt = 0;
   let lastCameraLabel = '';
+  let geolocationSettings = { enabled: false };
+  let cachedLocation = null;
+  let cachedLocationAt = 0;
 
   const CLIENT_SCAN_COOLDOWN_MS = 1800;
+  const LOCATION_CACHE_MS = 15000;
   const clockTime = document.getElementById('clockTime');
   const statusBanner = document.getElementById('statusBanner');
   const startButton = document.getElementById('startButton');
@@ -60,8 +64,14 @@
         return;
       }
 
+      geolocationSettings = status.geolocation || { enabled: false };
       projectStatus.textContent =
-        'Ready. Duplicate window: ' + status.duplicateWindowSeconds + ' seconds. Time zone: ' + status.timeZone + '.';
+        'Ready. Duplicate window: ' +
+        status.duplicateWindowSeconds +
+        ' seconds. Time zone: ' +
+        status.timeZone +
+        '. Location check: ' +
+        (geolocationSettings.enabled ? 'on.' : 'off.');
       setBanner('Backend is ready. Start the scanner when you are near a QR code.', 'info');
     } catch (error) {
       projectStatus.textContent = 'Unable to read project status.';
@@ -186,14 +196,22 @@
     isProcessing = true;
     lastClientScanText = decodedText;
     lastClientScanAt = now;
-    setBanner('QR detected. Validating against Google Sheets...', 'info');
+    setBanner(
+      geolocationSettings.enabled
+        ? 'QR detected. Checking location and validating against Google Sheets...'
+        : 'QR detected. Validating against Google Sheets...',
+      'info'
+    );
 
     try {
+      const locationResult = await getScannerLocation_();
       const response = await window.ApiClient.post('process_scan', {
         rawQrText: decodedText,
         scannerContext: {
           cameraLabel: lastCameraLabel,
           userAgent: navigator.userAgent,
+          location: locationResult.location,
+          geolocationError: locationResult.error,
         },
       });
       renderScanResponse(response);
@@ -297,6 +315,64 @@
     }
 
     html5QrCode = new Html5Qrcode('reader');
+  }
+
+  function getScannerLocation_() {
+    if (!geolocationSettings.enabled) {
+      return Promise.resolve({ location: null, error: '' });
+    }
+
+    if (!navigator.geolocation) {
+      return Promise.resolve({
+        location: null,
+        error: 'This device does not support browser location access.',
+      });
+    }
+
+    if (cachedLocation && Date.now() - cachedLocationAt < LOCATION_CACHE_MS) {
+      return Promise.resolve({ location: cachedLocation, error: '' });
+    }
+
+    return new Promise(function(resolve) {
+      navigator.geolocation.getCurrentPosition(
+        function(position) {
+          cachedLocation = {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: position.coords.accuracy,
+          };
+          cachedLocationAt = Date.now();
+          resolve({ location: cachedLocation, error: '' });
+        },
+        function(error) {
+          resolve({
+            location: null,
+            error: resolveLocationError_(error),
+          });
+        },
+        {
+          enableHighAccuracy: true,
+          maximumAge: LOCATION_CACHE_MS,
+          timeout: 8000,
+        }
+      );
+    });
+  }
+
+  function resolveLocationError_(error) {
+    if (!error) {
+      return 'Location could not be read.';
+    }
+
+    if (error.code === error.PERMISSION_DENIED) {
+      return 'Location access was blocked. Allow location permission and scan again.';
+    }
+
+    if (error.code === error.TIMEOUT) {
+      return 'Location lookup timed out. Please try again.';
+    }
+
+    return error.message || 'Location could not be read.';
   }
 
   function getSelectedCameraLabel_() {
