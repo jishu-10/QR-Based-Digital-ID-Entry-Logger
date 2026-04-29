@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>User Moderation</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/css/admin-theme.css">
+  </head>
+  <body>
+    <div class="shell">
+      <section class="hero">
+        <div>
+          <h1>User Moderation</h1>
+          <p>Search users, add users in bulk, and enable, disable, or remove selected QR IDs only when an admin asks for the data.</p>
+        </div>
+        <div class="nav-row">
+          <a class="hero-link" href="admin.html">Main Admin</a>
+          <a class="hero-link" href="reports.html">Reports</a>
+          <a class="hero-link" href="index.html">Scanner</a>
+        </div>
+      </section>
+
+      <section class="panel" id="adminGate">
+        <h2>Admin Access</h2>
+        <p class="hint">Open this page with an active admin session or enter the Apps Script access key.</p>
+        <div class="field-block">
+          <label class="field-label" for="gateAdminKeyInput">Admin Access Key</label>
+          <input id="gateAdminKeyInput" type="password" autocomplete="current-password" placeholder="Required">
+        </div>
+        <div class="status-bar" id="gateStatus">User moderation is locked until admin access is verified.</div>
+        <div class="button-row">
+          <button class="primary-btn" id="unlockAdminButton">Unlock Users</button>
+          <a class="hero-link" href="admin.html">Back to Admin</a>
+        </div>
+      </section>
+
+      <main id="adminContent" hidden>
+        <div class="status-bar" id="statusBar">User moderation is ready. Search or add users when needed.</div>
+
+        <section class="panel">
+          <h2>User Filters</h2>
+          <p class="hint">Results are fetched only after you search. Use narrow filters for faster reads.</p>
+          <div class="field-grid">
+            <div class="field-block">
+              <label class="field-label" for="filterUserId">User ID</label>
+              <input id="filterUserId" type="text" placeholder="ANT-...">
+            </div>
+            <div class="field-block">
+              <label class="field-label" for="filterName">Name</label>
+              <input id="filterName" type="text" placeholder="Name contains">
+            </div>
+            <div class="field-block">
+              <label class="field-label" for="filterEmail">Email</label>
+              <input id="filterEmail" type="email" placeholder="Email contains">
+            </div>
+            <div class="field-block">
+              <label class="field-label" for="filterStatus">QR Status</label>
+              <select id="filterStatus">
+                <option value="">All</option>
+                <option value="active">Enabled</option>
+                <option value="inactive">Disabled</option>
+              </select>
+            </div>
+            <div class="field-block">
+              <label class="field-label" for="filterDateFrom">Created From</label>
+              <input id="filterDateFrom" type="date">
+            </div>
+            <div class="field-block">
+              <label class="field-label" for="filterDateTo">Created To</label>
+              <input id="filterDateTo" type="date">
+            </div>
+            <div class="field-block">
+              <label class="field-label" for="filterTimeFrom">Time From</label>
+              <input id="filterTimeFrom" type="time">
+            </div>
+            <div class="field-block">
+              <label class="field-label" for="filterTimeTo">Time To</label>
+              <input id="filterTimeTo" type="time">
+            </div>
+          </div>
+          <div class="button-row">
+            <button class="primary-btn" id="searchUsersButton">Search Users</button>
+            <button class="secondary-btn" id="clearFiltersButton">Clear Filters</button>
+            <button class="secondary-btn" id="prevUsersButton" disabled>Previous</button>
+            <button class="secondary-btn" id="nextUsersButton" disabled>Next</button>
+            <button class="secondary-btn" id="lockAdminButton">Lock</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Bulk Add Users</h2>
+          <p class="hint">Paste CSV rows in the format <strong>name,email</strong>. New QR payloads are signed before Drive files are created.</p>
+          <textarea id="csvInput" spellcheck="false">name,email
+Alice Johnson,alice@example.com
+Bob Shah,bob@example.com</textarea>
+          <div class="button-row" style="margin-top: 14px;">
+            <button class="primary-btn" id="generateUsersButton">Generate QR IDs</button>
+          </div>
+          <div id="generationResults" class="empty-state">No bulk add run yet.</div>
+        </section>
+
+        <section class="panel">
+          <h2>User Results</h2>
+          <p class="hint" id="resultSummary">No user search has run yet.</p>
+          <div class="button-row">
+            <button class="secondary-btn" id="selectAllButton" disabled>Select All Visible</button>
+            <button class="secondary-btn" id="enableSelectedButton" disabled>Enable Selected QR</button>
+            <button class="secondary-btn" id="disableSelectedButton" disabled>Disable Selected QR</button>
+            <button class="danger-btn" id="deleteSelectedButton" disabled>Remove Selected</button>
+          </div>
+          <div class="table-shell" id="usersContainer">
+            <div class="empty-state">Use Search Users to fetch a focused result set.</div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="assets/js/runtime-config.js"></script>
+    <script src="assets/js/api-client.js"></script>
+    <script src="assets/js/admin-auth.js"></script>
+    <script src="assets/js/user-moderation-page.js"></script>
+  </body>
+</html>
