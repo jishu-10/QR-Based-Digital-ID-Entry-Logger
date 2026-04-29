@@ -10,11 +10,14 @@
   let geolocationSettings = { enabled: false };
   let cachedLocation = null;
   let cachedLocationAt = 0;
+  let audioContext = null;
+  let scanFeedbackTimer = null;
 
   const CLIENT_SCAN_COOLDOWN_MS = 1800;
   const LOCATION_CACHE_MS = 15000;
   const clockTime = document.getElementById('clockTime');
   const statusBanner = document.getElementById('statusBanner');
+  const readerShell = document.getElementById('readerShell');
   const startButton = document.getElementById('startButton');
   const stopButton = document.getElementById('stopButton');
   const cameraSelect = document.getElementById('cameraSelect');
@@ -33,6 +36,7 @@
 
   function bindEvents() {
     startButton.addEventListener('click', function() {
+      primeAudio_();
       startScanner();
     });
 
@@ -104,8 +108,10 @@
       isScanning = true;
       stopButton.disabled = false;
       cameraSelect.disabled = false;
+      setScannerLiveVisual_(true);
       setBanner('Scanner is live. Hold the QR steady inside the frame.', 'success');
     } catch (error) {
+      setScannerLiveVisual_(false);
       setBanner(resolveCameraMessage(error), 'warning');
       startButton.disabled = false;
       stopButton.disabled = true;
@@ -136,6 +142,7 @@
       await startScannerSession_(cameraId);
       isScanning = true;
       lastCameraLabel = getSelectedCameraLabel_();
+      setScannerLiveVisual_(true);
       setBanner('Camera source updated successfully.', 'success');
     } catch (error) {
       isScanning = false;
@@ -146,17 +153,20 @@
           await startScannerSession_(previousCameraId);
           isScanning = true;
           lastCameraLabel = getSelectedCameraLabel_();
+          setScannerLiveVisual_(true);
           setBanner('Could not switch cameras. The previous camera source was restored.', 'warning');
         } catch (restoreError) {
           activeCameraId = '';
           cameraSelect.value = '';
           lastCameraLabel = '';
+          setScannerLiveVisual_(false);
           setBanner(resolveCameraMessage(error), 'warning');
         }
       } else {
         activeCameraId = '';
         cameraSelect.value = '';
         lastCameraLabel = '';
+        setScannerLiveVisual_(false);
         setBanner(resolveCameraMessage(error), 'warning');
       }
     } finally {
@@ -176,6 +186,7 @@
     isScanning = false;
     isProcessing = false;
     activeCameraId = '';
+    setScannerLiveVisual_(false);
     startButton.disabled = false;
     stopButton.disabled = true;
     cameraSelect.disabled = true;
@@ -196,6 +207,7 @@
     isProcessing = true;
     lastClientScanText = decodedText;
     lastClientScanAt = now;
+    setScannerProcessingVisual_(true);
     setBanner(
       geolocationSettings.enabled
         ? 'QR detected. Checking location and validating against Google Sheets...'
@@ -216,16 +228,21 @@
       });
       renderScanResponse(response);
     } catch (error) {
+      playScanSound_('fail');
+      flashScannerVisual_('warning');
       setBanner(error.message || 'Unable to reach the backend.', 'warning');
       lastScanResult.textContent = 'Server communication failed.';
     } finally {
       isProcessing = false;
+      setScannerProcessingVisual_(false);
     }
   }
 
   function renderScanResponse(response) {
     if (!response || !response.ok) {
       const message = response && response.message ? response.message : 'Scan rejected.';
+      playScanSound_(resolveFailureSound_(response && response.code));
+      flashScannerVisual_('warning');
       setBanner(message, 'warning');
       lastScanResult.textContent = response && response.code ? response.code : 'SCAN_REJECTED';
       lastUserName.textContent = 'No valid user logged.';
@@ -237,6 +254,8 @@
       '<span class="scan-pill ' + (response.status === 'IN' ? 'pill-in' : 'pill-out') + '">' + response.status + '</span>';
 
     setBanner(response.message, 'success');
+    playScanSound_(response.status === 'IN' ? 'successIn' : 'successOut');
+    flashScannerVisual_('success');
     lastScanResult.innerHTML = statusMarkup + ' ' + escapeHtml(response.code);
     lastUserName.textContent = response.name + ' (' + response.userId + ')';
     lastTimestamp.textContent = new Date(response.timestampIso).toLocaleString();
@@ -392,6 +411,106 @@
 
     statusBanner.classList.add(toneClass);
     statusBanner.textContent = message;
+  }
+
+  function setScannerLiveVisual_(isLive) {
+    if (!readerShell) {
+      return;
+    }
+
+    readerShell.classList.toggle('is-live', Boolean(isLive));
+
+    if (!isLive) {
+      readerShell.classList.remove('is-processing', 'flash-success', 'flash-warning');
+    }
+  }
+
+  function setScannerProcessingVisual_(isBusy) {
+    if (!readerShell) {
+      return;
+    }
+
+    readerShell.classList.toggle('is-processing', Boolean(isBusy));
+  }
+
+  function flashScannerVisual_(tone) {
+    if (!readerShell) {
+      return;
+    }
+
+    window.clearTimeout(scanFeedbackTimer);
+    readerShell.classList.remove('flash-success', 'flash-warning');
+    readerShell.classList.add(tone === 'success' ? 'flash-success' : 'flash-warning');
+    scanFeedbackTimer = window.setTimeout(function() {
+      readerShell.classList.remove('flash-success', 'flash-warning');
+    }, 850);
+  }
+
+  function primeAudio_() {
+    try {
+      const AudioContextConstructor = window.AudioContext || window.webkitAudioContext;
+
+      if (!AudioContextConstructor) {
+        return;
+      }
+
+      if (!audioContext) {
+        audioContext = new AudioContextConstructor();
+      }
+
+      if (audioContext.state === 'suspended') {
+        audioContext.resume();
+      }
+    } catch (error) {
+      audioContext = null;
+    }
+  }
+
+  function playScanSound_(kind) {
+    primeAudio_();
+
+    if (!audioContext || audioContext.state === 'suspended') {
+      return;
+    }
+
+    const patterns = {
+      successIn: [523.25, 659.25, 783.99],
+      successOut: [783.99, 659.25, 523.25],
+      duplicate: [392.0, 392.0],
+      fail: [220.0, 164.81],
+      system: [246.94, 196.0, 164.81],
+    };
+    const frequencies = patterns[kind] || patterns.fail;
+    const baseTime = audioContext.currentTime;
+
+    frequencies.forEach(function(frequency, index) {
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      const startAt = baseTime + index * 0.09;
+      const endAt = startAt + 0.075;
+
+      oscillator.type = kind === 'fail' || kind === 'system' ? 'sawtooth' : 'sine';
+      oscillator.frequency.setValueAtTime(frequency, startAt);
+      gainNode.gain.setValueAtTime(0.0001, startAt);
+      gainNode.gain.exponentialRampToValueAtTime(0.08, startAt + 0.012);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, endAt);
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      oscillator.start(startAt);
+      oscillator.stop(endAt + 0.02);
+    });
+  }
+
+  function resolveFailureSound_(code) {
+    if (code === 'DUPLICATE_SCAN') {
+      return 'duplicate';
+    }
+
+    if (code === 'SYSTEM_BUSY' || code === 'SERVER_ERROR') {
+      return 'system';
+    }
+
+    return 'fail';
   }
 
   function resolveCameraMessage(error) {
