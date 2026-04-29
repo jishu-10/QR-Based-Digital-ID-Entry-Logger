@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>QR Reports</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/css/admin-theme.css">
+  </head>
+  <body>
+    <div class="shell">
+      <section class="hero">
+        <div>
+          <h1>QR Reports</h1>
+          <p>Generate overall summaries, user-specific attendance, or filtered log reports on demand, with CSV output for spreadsheet review.</p>
+        </div>
+        <div class="nav-row">
+          <a class="hero-link" href="admin.html">Main Admin</a>
+          <a class="hero-link" href="users.html">Users</a>
+          <a class="hero-link" href="index.html">Scanner</a>
+        </div>
+      </section>
+
+      <section class="panel" id="adminGate">
+        <h2>Admin Access</h2>
+        <p class="hint">Open this page with an active admin session or enter the Apps Script access key.</p>
+        <div class="field-block">
+          <label class="field-label" for="gateAdminKeyInput">Admin Access Key</label>
+          <input id="gateAdminKeyInput" type="password" autocomplete="current-password" placeholder="Required">
+        </div>
+        <div class="status-bar" id="gateStatus">Reports are locked until admin access is verified.</div>
+        <div class="button-row">
+          <button class="primary-btn" id="unlockAdminButton">Unlock Reports</button>
+          <a class="hero-link" href="admin.html">Back to Admin</a>
+        </div>
+      </section>
+
+      <main id="adminContent" hidden>
+        <div class="status-bar" id="statusBar">Reports are ready. Choose filters and generate when needed.</div>
+
+        <section class="panel">
+          <h2>Report Filters</h2>
+          <p class="hint">Reports read Sheets only when generated. Use filters to keep responses focused.</p>
+          <div class="field-grid">
+            <div class="field-block">
+              <label class="field-label" for="reportTypeInput">Report Type</label>
+              <select id="reportTypeInput">
+                <option value="overall">Overall System</option>
+                <option value="user">User Specific</option>
+                <option value="logs">Filter-Based Logs</option>
+              </select>
+            </div>
+            <div class="field-block">
+              <label class="field-label" for="filterUserId">User ID</label>
+              <input id="filterUserId" type="text" placeholder="ANT-...">
+            </div>
+            <div class="field-block">
+              <label class="field-label" for="filterName">Name</label>
+              <input id="filterName" type="text" placeholder="Name contains">
+            </div>
+            <div class="field-block">
+              <label class="field-label" for="filterEmail">Email</label>
+              <input id="filterEmail" type="email" placeholder="Email contains">
+            </div>
+            <div class="field-block">
+              <label class="field-label" for="filterDateFrom">Date From</label>
+              <input id="filterDateFrom" type="date">
+            </div>
+            <div class="field-block">
+              <label class="field-label" for="filterDateTo">Date To</label>
+              <input id="filterDateTo" type="date">
+            </div>
+            <div class="field-block">
+              <label class="field-label" for="filterTimeFrom">Time From</label>
+              <input id="filterTimeFrom" type="time">
+            </div>
+            <div class="field-block">
+              <label class="field-label" for="filterTimeTo">Time To</label>
+              <input id="filterTimeTo" type="time">
+            </div>
+            <div class="field-block">
+              <label class="field-label" for="filterStatus">Status</label>
+              <select id="filterStatus">
+                <option value="">All</option>
+                <option value="IN">IN</option>
+                <option value="OUT">OUT</option>
+              </select>
+            </div>
+            <div class="field-block">
+              <label class="field-label" for="limitInput">Log Limit</label>
+              <select id="limitInput">
+                <option value="100">100 rows</option>
+                <option value="250">250 rows</option>
+                <option value="500">500 rows</option>
+              </select>
+            </div>
+          </div>
+          <div class="button-row">
+            <button class="primary-btn" id="generateReportButton">Generate Report</button>
+            <button class="secondary-btn" id="clearFiltersButton">Clear Filters</button>
+            <button class="secondary-btn" id="downloadCsvButton" disabled>Download CSV</button>
+            <button class="secondary-btn" id="lockAdminButton">Lock</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Summary</h2>
+          <div class="stats">
+            <div class="stat-card">
+              <span class="stat-label">Total Scans</span>
+              <div class="stat-value" id="summaryTotal">0</div>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">IN</span>
+              <div class="stat-value" id="summaryIn">0</div>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">OUT</span>
+              <div class="stat-value" id="summaryOut">0</div>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Users</span>
+              <div class="stat-value" id="summaryUsers">0</div>
+            </div>
+          </div>
+          <p class="hint" id="summaryMeta">No report generated yet.</p>
+        </section>
+
+        <section class="panel">
+          <h2>Report Rows</h2>
+          <div class="table-shell" id="reportContainer">
+            <div class="empty-state">Generate a report to view rows.</div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>CSV Preview</h2>
+          <p class="hint">The same CSV can be downloaded and opened in Sheets or Excel.</p>
+          <textarea id="csvPreview" class="csv-preview" readonly>No CSV generated yet.</textarea>
+        </section>
+      </main>
+    </div>
+
+    <script src="assets/js/runtime-config.js"></script>
+    <script src="assets/js/api-client.js"></script>
+    <script src="assets/js/admin-auth.js"></script>
+    <script src="assets/js/reports-page.js"></script>
+  </body>
+</html>
