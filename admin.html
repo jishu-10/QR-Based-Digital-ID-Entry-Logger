@@ -443,9 +443,9 @@
           <p class="hint">Paste CSV rows in the format <strong>name,email</strong>. The backend generates unique user IDs, creates QR images, stores them in Drive, and saves the user database in Sheets.</p>
 
           <div class="field-block">
-            <label class="field-label" for="adminKeyInput">Admin Access Key</label>
-            <input id="adminKeyInput" type="password" placeholder="Required ADMIN_ACCESS_KEY">
-            <p class="hint" id="adminKeyHint">Required for all admin actions.</p>
+            <label class="field-label" for="adminKeyInput">Admin Session</label>
+            <input id="adminKeyInput" type="password" placeholder="Session active after unlock" disabled>
+            <p class="hint" id="adminKeyHint">Unlock the console to start a protected session.</p>
           </div>
 
           <div class="field-block">
