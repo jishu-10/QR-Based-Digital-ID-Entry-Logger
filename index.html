@@ -191,10 +191,65 @@
           linear-gradient(135deg, rgba(13, 138, 115, 0.13), rgba(20, 17, 15, 0.05)),
           #fff;
         border: 1px dashed rgba(20, 17, 15, 0.18);
+        transition: border-color 0.18s ease, box-shadow 0.18s ease;
       }
 
       #reader video {
         border-radius: 20px;
+      }
+
+      .reader-shell {
+        position: relative;
+        border-radius: 22px;
+      }
+
+      .scan-line {
+        position: absolute;
+        top: 12%;
+        left: 9%;
+        right: 9%;
+        height: 3px;
+        border-radius: 999px;
+        background: rgba(13, 138, 115, 0.88);
+        box-shadow: 0 0 24px rgba(13, 138, 115, 0.46);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.16s ease;
+      }
+
+      .reader-shell.is-live .scan-line {
+        animation: scanSweep 2.2s ease-in-out infinite;
+        opacity: 0.8;
+      }
+
+      .reader-shell.is-processing .scan-line {
+        animation-duration: 0.75s;
+        background: rgba(20, 17, 15, 0.72);
+        box-shadow: 0 0 24px rgba(20, 17, 15, 0.28);
+      }
+
+      .reader-shell.flash-success #reader {
+        border-color: rgba(20, 102, 56, 0.58);
+        box-shadow: 0 0 0 5px rgba(20, 102, 56, 0.12);
+      }
+
+      .reader-shell.flash-warning #reader {
+        border-color: rgba(184, 91, 46, 0.58);
+        box-shadow: 0 0 0 5px rgba(184, 91, 46, 0.12);
+      }
+
+      @keyframes scanSweep {
+        0% {
+          top: 12%;
+        }
+
+        50% {
+          top: 84%;
+        }
+
+        100% {
+          top: 12%;
+        }
       }
 
       .status-banner {
@@ -335,7 +390,10 @@
             </select>
           </div>
 
-          <div id="reader"></div>
+          <div class="reader-shell" id="readerShell">
+            <div id="reader"></div>
+            <div class="scan-line" id="scanLine" aria-hidden="true"></div>
+          </div>
 
           <div class="status-banner tone-neutral" id="statusBanner">
             Waiting to start the camera scanner.
