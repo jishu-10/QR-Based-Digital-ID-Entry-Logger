@@ -163,6 +163,12 @@
         gap: 12px;
       }
 
+      .workspace-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
       .stat-card {
         border-radius: 18px;
         padding: 16px;
@@ -182,6 +188,26 @@
       .stat-value {
         font-family: "Space Grotesk", sans-serif;
         font-size: 1.6rem;
+      }
+
+      .workspace-card {
+        display: block;
+        border-radius: 18px;
+        padding: 16px;
+        background: rgba(255, 255, 255, 0.76);
+        border: 1px solid var(--line);
+        color: var(--ink);
+        text-decoration: none;
+      }
+
+      .workspace-card strong {
+        display: block;
+        margin-bottom: 6px;
+      }
+
+      .workspace-card span {
+        color: var(--muted);
+        font-size: 0.92rem;
       }
 
       .links {
@@ -345,6 +371,10 @@
           grid-template-columns: 1fr;
         }
 
+        .workspace-grid {
+          grid-template-columns: 1fr;
+        }
+
         .field-grid {
           grid-template-columns: 1fr;
         }
@@ -388,6 +418,7 @@
           <div class="button-row">
             <button class="primary-btn" id="bootstrapButton">Bootstrap Project</button>
             <button class="secondary-btn" id="refreshButton">Refresh Status</button>
+            <button class="secondary-btn" id="loadSnapshotButton">Load Snapshot</button>
           </div>
 
           <div class="links" id="resourceLinks"></div>
@@ -459,9 +490,25 @@ Bob Shah,bob@example.com</textarea>
 
           <div class="button-row" style="margin-top: 14px;">
             <button class="primary-btn" id="generateButton">Generate QR IDs</button>
-            <button class="secondary-btn" id="loadUsersButton">Load Recent Users</button>
+            <a class="hero-link" href="users.html">Open User Moderation</a>
+            <a class="hero-link" href="reports.html">Open Reports</a>
             <button class="secondary-btn" id="lockAdminButton">Lock Admin</button>
           </div>
+        </div>
+      </section>
+
+      <section class="panel" style="margin-top: 18px;">
+        <h2>Admin Workspaces</h2>
+        <p class="hint">User details and reports live on dedicated authenticated pages and fetch data only after you request it.</p>
+        <div class="workspace-grid">
+          <a class="workspace-card" href="users.html">
+            <strong>User Detail Moderation</strong>
+            <span>Search by ID, name, email, date, time, and QR status. Bulk enable, disable, remove, or add users.</span>
+          </a>
+          <a class="workspace-card" href="reports.html">
+            <strong>Reports</strong>
+            <span>Generate overall, user-specific, or filter-based log reports with CSV output.</span>
+          </a>
         </div>
       </section>
 
@@ -469,21 +516,6 @@ Bob Shah,bob@example.com</textarea>
         <h2>Generation Results</h2>
         <p class="hint">QR files are stored in the project Drive folder and returned as shareable links.</p>
         <div id="resultContainer" class="empty-state">No generation run yet.</div>
-      </section>
-
-      <section class="panel" style="margin-top: 18px;">
-        <h2>Recent Users</h2>
-        <p class="hint">Newest user records currently stored in the <code class="inline-code">Users</code> sheet, with basic moderation controls.</p>
-        <div id="usersContainer" class="empty-state">No users loaded yet.</div>
-      </section>
-
-      <section class="panel" style="margin-top: 18px;">
-        <h2>Daily / Weekly Reports</h2>
-        <p class="hint">Per-user attendance totals generated from the clean entry log.</p>
-        <div class="button-row">
-          <button class="secondary-btn" id="loadReportsButton">Refresh Reports</button>
-        </div>
-        <div id="reportsContainer" class="empty-state">No reports loaded yet.</div>
       </section>
       </main>
     </div>
