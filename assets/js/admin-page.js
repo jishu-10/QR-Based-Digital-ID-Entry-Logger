@@ -29,17 +29,25 @@
       window.APP_RUNTIME_CONFIG.storageKeys &&
       window.APP_RUNTIME_CONFIG.storageKeys.adminAccessKey) ||
     'qr-entry-logger.admin-access-key';
+  const adminSessionStorageKey =
+    (window.APP_RUNTIME_CONFIG &&
+      window.APP_RUNTIME_CONFIG.storageKeys &&
+      window.APP_RUNTIME_CONFIG.storageKeys.adminSessionToken) ||
+    'qr-entry-logger.admin-session-token';
+  let adminSessionToken = '';
 
   document.addEventListener('DOMContentLoaded', function() {
     backendUrl.textContent = window.APP_RUNTIME_CONFIG.appsScriptWebAppUrl;
 
-    const storedKey = window.localStorage.getItem(adminKeyStorageKey) || '';
-    gateAdminKeyInput.value = storedKey;
-    adminKeyInput.value = storedKey;
+    adminSessionToken = window.sessionStorage.getItem(adminSessionStorageKey) || '';
+    gateAdminKeyInput.value = window.localStorage.getItem(adminKeyStorageKey) || '';
+    adminKeyInput.value = '';
+    adminKeyInput.disabled = true;
+    window.localStorage.removeItem(adminKeyStorageKey);
 
     bindEvents();
 
-    if (storedKey) {
+    if (adminSessionToken) {
       unlockAdmin(true);
     }
   });
@@ -59,12 +67,10 @@
     loadUsersButton.addEventListener('click', loadRecentUsers);
     loadReportsButton.addEventListener('click', loadReports);
     saveGeoButton.addEventListener('click', saveGeolocationSettings);
-    lockAdminButton.addEventListener('click', lockAdmin);
+    lockAdminButton.addEventListener('click', logoutAdmin);
     usersContainer.addEventListener('click', handleUserAction);
     adminKeyInput.addEventListener('input', function() {
-      const key = adminKeyInput.value.trim();
-      gateAdminKeyInput.value = key;
-      window.localStorage.setItem(adminKeyStorageKey, key);
+      gateAdminKeyInput.value = adminKeyInput.value.trim();
     });
   }
 
@@ -72,22 +78,54 @@
     return (adminKeyInput.value || gateAdminKeyInput.value || '').trim();
   }
 
+  function getAdminAuthParams() {
+    if (adminSessionToken) {
+      return {
+        adminSessionToken: adminSessionToken,
+      };
+    }
+
+    const key = getAdminKey();
+    return key
+      ? {
+          adminKey: key,
+        }
+      : {};
+  }
+
+  function storeAdminSession(token) {
+    adminSessionToken = token || '';
+
+    if (adminSessionToken) {
+      window.sessionStorage.setItem(adminSessionStorageKey, adminSessionToken);
+    } else {
+      window.sessionStorage.removeItem(adminSessionStorageKey);
+    }
+  }
+
   async function unlockAdmin(isAutomatic) {
     const key = gateAdminKeyInput.value.trim();
 
-    if (!key) {
+    if (!isAutomatic && !key) {
       setGateStatus('Enter the Admin Access Key to unlock this console.');
       return;
     }
 
     setBusy(unlockAdminButton, true);
-    setGateStatus('Checking admin access...');
+    setGateStatus(isAutomatic ? 'Restoring admin session...' : 'Checking admin access...');
 
     try {
-      adminKeyInput.value = key;
-      window.localStorage.setItem(adminKeyStorageKey, key);
+      if (!isAutomatic || !adminSessionToken) {
+        const session = await window.ApiClient.post('admin_login', {
+          adminKey: key,
+        });
+        storeAdminSession(session.sessionToken);
+      }
 
-      const status = await window.ApiClient.get('status', { adminKey: key });
+      gateAdminKeyInput.value = '';
+      adminKeyInput.value = '';
+
+      const status = await window.ApiClient.post('status', getAdminAuthParams());
 
       if (!status.adminAccessEnabled) {
         throw new Error('ADMIN_ACCESS_KEY is not configured in Apps Script Script Properties.');
@@ -102,11 +140,12 @@
       renderStatus(status);
       await Promise.all([loadDashboard(), loadRecentUsers(), loadReports()]);
     } catch (error) {
+      storeAdminSession('');
+
       if (!isAutomatic) {
         setGateStatus(error.message || 'Unable to unlock admin console.');
       } else {
-        window.localStorage.removeItem(adminKeyStorageKey);
-        setGateStatus('Stored key could not unlock admin access. Enter the key again.');
+        setGateStatus('Saved admin session expired. Enter the key again.');
       }
       lockAdmin(false);
     } finally {
@@ -119,10 +158,25 @@
     adminGate.hidden = false;
 
     if (clearStoredKey !== false) {
+      storeAdminSession('');
       window.localStorage.removeItem(adminKeyStorageKey);
       gateAdminKeyInput.value = '';
       adminKeyInput.value = '';
       setGateStatus('Admin console locked.');
+    }
+  }
+
+  async function logoutAdmin() {
+    const authParams = getAdminAuthParams();
+
+    try {
+      if (authParams.adminSessionToken) {
+        await window.ApiClient.post('admin_logout', authParams);
+      }
+    } catch (error) {
+      // Client-side lock still protects the browser session if server revocation fails.
+    } finally {
+      lockAdmin(true);
     }
   }
 
@@ -140,9 +194,7 @@
     setStatus('Creating project resources...');
 
     try {
-      await window.ApiClient.post('bootstrap_project', {
-        adminKey: getAdminKey(),
-      });
+      await window.ApiClient.post('bootstrap_project', getAdminAuthParams());
       setStatus('Project resources are ready.');
       await refreshAll();
     } catch (error) {
@@ -154,12 +206,10 @@
 
   async function loadStatus() {
     try {
-      const status = await window.ApiClient.get('status', {
-        adminKey: getAdminKey(),
-      });
+      const status = await window.ApiClient.post('status', getAdminAuthParams());
 
       if (!status.adminAuthorized) {
-        throw new Error('Admin access expired or the key is invalid.');
+        throw new Error('Admin access expired. Unlock the admin console again.');
       }
 
       renderStatus(status);
@@ -204,7 +254,7 @@
     }
 
     adminKeyHint.textContent =
-      'Protected mode is required. Use the same ADMIN_ACCESS_KEY stored in Apps Script Script Properties.';
+      'Session token active. Lock the console when you finish admin work.';
     renderGeolocationSettings(status.geolocation || {});
   }
 
@@ -217,9 +267,7 @@
 
   async function loadDashboard() {
     try {
-      const summary = await window.ApiClient.get('dashboard_summary', {
-        adminKey: getAdminKey(),
-      });
+      const summary = await window.ApiClient.post('dashboard_summary', getAdminAuthParams());
       document.getElementById('statUsers').textContent = summary.totalUsers || 0;
       document.getElementById('statInside').textContent = summary.currentlyInside || 0;
       document.getElementById('statToday').textContent = summary.scansToday || 0;
@@ -234,13 +282,15 @@
     setStatus('Saving geolocation rules...');
 
     try {
-      const settings = await window.ApiClient.post('update_geolocation_settings', {
-        adminKey: getAdminKey(),
-        enabled: geoEnabledInput.checked,
-        latitude: geoLatitudeInput.value.trim(),
-        longitude: geoLongitudeInput.value.trim(),
-        radiusMeters: geoRadiusInput.value.trim(),
-      });
+      const settings = await window.ApiClient.post(
+        'update_geolocation_settings',
+        Object.assign(getAdminAuthParams(), {
+          enabled: geoEnabledInput.checked,
+          latitude: geoLatitudeInput.value.trim(),
+          longitude: geoLongitudeInput.value.trim(),
+          radiusMeters: geoRadiusInput.value.trim(),
+        })
+      );
       renderGeolocationSettings(settings);
       setStatus('Geolocation rules saved.');
     } catch (error) {
@@ -264,10 +314,9 @@
     try {
       const result = await window.ApiClient.post(
         'register_users_from_csv',
-        {
+        Object.assign(getAdminAuthParams(), {
           csvText: csv,
-          adminKey: getAdminKey(),
-        },
+        }),
         {
           timeoutMs: 120000,
         }
@@ -344,10 +393,7 @@
     setBusy(loadUsersButton, true);
 
     try {
-      const users = await window.ApiClient.get('recent_users', {
-        limit: 20,
-        adminKey: getAdminKey(),
-      });
+      const users = await window.ApiClient.post('recent_users', Object.assign({ limit: 20 }, getAdminAuthParams()));
       renderRecentUsers(users);
     } catch (error) {
       usersContainer.innerHTML = '<div class="empty-state">' + escapeHtml(error.message || 'Unable to load users.') + '</div>';
@@ -446,16 +492,20 @@
 
     try {
       if (action === 'set-active') {
-        await window.ApiClient.post('set_user_active', {
-          adminKey: getAdminKey(),
-          userId: userId,
-          isActive: button.getAttribute('data-active') === 'true',
-        });
+        await window.ApiClient.post(
+          'set_user_active',
+          Object.assign(getAdminAuthParams(), {
+            userId: userId,
+            isActive: button.getAttribute('data-active') === 'true',
+          })
+        );
       } else if (action === 'delete-user') {
-        await window.ApiClient.post('delete_user', {
-          adminKey: getAdminKey(),
-          userId: userId,
-        });
+        await window.ApiClient.post(
+          'delete_user',
+          Object.assign(getAdminAuthParams(), {
+            userId: userId,
+          })
+        );
       }
 
       await Promise.all([loadRecentUsers(), loadDashboard(), loadReports()]);
@@ -471,9 +521,7 @@
     setBusy(loadReportsButton, true);
 
     try {
-      const report = await window.ApiClient.get('attendance_report', {
-        adminKey: getAdminKey(),
-      });
+      const report = await window.ApiClient.post('attendance_report', getAdminAuthParams());
       renderReports(report);
     } catch (error) {
       reportsContainer.innerHTML =
