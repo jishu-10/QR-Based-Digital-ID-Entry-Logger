@@ -8,6 +8,7 @@
   const statusBar = document.getElementById('statusBar');
   const bootstrapButton = document.getElementById('bootstrapButton');
   const refreshButton = document.getElementById('refreshButton');
+  const loadSnapshotButton = document.getElementById('loadSnapshotButton');
   const generateButton = document.getElementById('generateButton');
   const loadUsersButton = document.getElementById('loadUsersButton');
   const loadReportsButton = document.getElementById('loadReportsButton');
@@ -63,12 +64,19 @@
     });
     bootstrapButton.addEventListener('click', bootstrapProject);
     refreshButton.addEventListener('click', refreshAll);
+    loadSnapshotButton.addEventListener('click', loadDashboard);
     generateButton.addEventListener('click', generateUsers);
-    loadUsersButton.addEventListener('click', loadRecentUsers);
-    loadReportsButton.addEventListener('click', loadReports);
+    if (loadUsersButton) {
+      loadUsersButton.addEventListener('click', loadRecentUsers);
+    }
+    if (loadReportsButton) {
+      loadReportsButton.addEventListener('click', loadReports);
+    }
     saveGeoButton.addEventListener('click', saveGeolocationSettings);
     lockAdminButton.addEventListener('click', logoutAdmin);
-    usersContainer.addEventListener('click', handleUserAction);
+    if (usersContainer) {
+      usersContainer.addEventListener('click', handleUserAction);
+    }
     adminKeyInput.addEventListener('input', function() {
       gateAdminKeyInput.value = adminKeyInput.value.trim();
     });
@@ -138,7 +146,7 @@
       adminGate.hidden = true;
       adminContent.hidden = false;
       renderStatus(status);
-      await Promise.all([loadDashboard(), loadRecentUsers(), loadReports()]);
+      setStatus('Admin session active. Load snapshot, manage users, or generate reports when needed.');
     } catch (error) {
       storeAdminSession('');
 
@@ -183,7 +191,6 @@
   async function refreshAll() {
     try {
       await loadStatus();
-      await Promise.all([loadDashboard(), loadRecentUsers(), loadReports()]);
     } catch (error) {
       // loadStatus already displays the useful message.
     }
@@ -322,7 +329,7 @@
         }
       );
       renderResults(result);
-      await Promise.all([loadDashboard(), loadRecentUsers(), loadReports(), loadStatus()]);
+      await loadStatus();
       setStatus('QR generation completed. Created: ' + result.createdCount + '.');
     } catch (error) {
       setStatus(error.message || 'Unable to generate QR IDs.');
@@ -390,6 +397,10 @@
   }
 
   async function loadRecentUsers() {
+    if (!usersContainer) {
+      return;
+    }
+
     setBusy(loadUsersButton, true);
 
     try {
@@ -518,6 +529,10 @@
   }
 
   async function loadReports() {
+    if (!reportsContainer) {
+      return;
+    }
+
     setBusy(loadReportsButton, true);
 
     try {
